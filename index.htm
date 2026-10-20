@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>time.keeps.ticking</title>
+  <style>
+    /* Custom Image Cursor across entire document */
+    html, body, * {
+      /* Replace URL below with your preferred image file or link */
+      cursor: url('https://cur.cursors-4u.net/cursors/cur-2/cur117.cur'), auto;
+    }
+
+    body {
+      background-color: #000000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .clock {
+      width: 300px;
+      height: 300px;
+      position: relative;
+      border-radius: 50%;
+      
+      background-image: url('https://upload.wikimedia.org/wikipedia/commons/5/59/Clock3.0.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original');
+      background-size: cover;
+      background-position: center;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+    }
+
+    .hand {
+      position: absolute;
+      bottom: 50%;
+      left: 50%;
+      transform-origin: bottom center;
+      border-radius: 4px;
+      transform: translateX(-50%) rotate(0deg);
+    }
+
+    .hour {
+      width: 6px;
+      height: 70px;
+      background-color: #000000;
+      z-index: 2;
+    }
+
+    .minute {
+      width: 4px;
+      height: 105px;
+      background-color: #000000;
+      z-index: 3;
+    }
+
+    .second {
+      width: 2px;
+      height: 120px;
+      background-color: #000000;
+      z-index: 4;
+    }
+
+    .center-cap {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 12px;
+      height: 12px;
+      background-color: #111115;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 5;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="clock">
+    <div class="hand hour" id="hour-hand"></div>
+    <div class="hand minute" id="minute-hand"></div>
+    <div class="hand second" id="second-hand"></div>
+    <div class="center-cap"></div>
+  </div>
+
+  <script>
+    // Audio framework setup
+    let audioCtx = null;
+    let audioUnlocked = false;
+
+    /**
+     * Plays a sound file with controlled volume.
+     * @param {string} fileName - Path or URL to the mp3 file
+     * @param {number} volume - Volume level from 0.0 to 1.0
+     */
+    function playSound(fileName, volume = 0.05) {
+      const safeVolume = Math.max(0, Math.min(1, volume));
+      
+      const audio = new Audio(fileName);
+      audio.volume = safeVolume;
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          // Fallback tone if MP3 file is not found or fails
+          playFallbackTick(safeVolume);
+        });
+      }
+    }
+
+    // Web Audio API synthesizer for soft ticking sound fallback
+    function playFallbackTick(vol) {
+      if (!audioUnlocked) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.03);
+        
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.03);
+      } catch (e) {
+        // Ignore audio playback errors
+      }
+    }
+
+    // Unlock browser audio context on first click
+    window.addEventListener('click', () => {
+      audioUnlocked = true;
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }, { once: true });
+
+    let lastSecond = -1;
+
+    function updateClock() {
+      const now = new Date();
+
+      const seconds = now.getSeconds();
+      const minutes = now.getMinutes();
+      const hours = now.getHours();
+
+      // Trigger sound once per second when second changes
+      if (seconds !== lastSecond) {
+        lastSecond = seconds;
+        playSound('tick.mp3', 0.05);
+      }
+
+      const secondDegrees = (seconds / 60) * 360;
+      const minuteDegrees = ((minutes + seconds / 60) / 60) * 360;
+      const hourDegrees = (((hours % 12) + minutes / 60) / 12) * 360;
+
+      document.getElementById('second-hand').style.transform = `translateX(-50%) rotate(${secondDegrees}deg)`;
+      document.getElementById('minute-hand').style.transform = `translateX(-50%) rotate(${minuteDegrees}deg)`;
+      document.getElementById('hour-hand').style.transform = `translateX(-50%) rotate(${hourDegrees}deg)`;
+    }
+
+    // Check time every 100ms
+    setInterval(updateClock, 100);
+    updateClock();
+  </script>
+</body>
+</html>
