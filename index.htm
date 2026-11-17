@@ -1,177 +1,1010 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>time.keeps.ticking</title>
-  <style>
-    html, body, * {cursor: url('https://www.rw-designer.com/cursor-image/242108-256x256.png'), auto;}
-
-    body {
-      background-color: #000000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-
-    .clock {
-      width: 300px;
-      height: 300px;
-      position: relative;
-      border-radius: 50%;
-      
-      background-image: url('https://upload.wikimedia.org/wikipedia/commons/5/59/Clock3.0.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original');
-      background-size: cover;
-      background-position: center;
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
-    }
-
-    .hand {
-      position: absolute;
-      bottom: 50%;
-      left: 50%;
-      transform-origin: bottom center;
-      border-radius: 4px;
-      transform: translateX(-50%) rotate(0deg);
-    }
-
-    .hour {
-      width: 6px;
-      height: 70px;
-      background-color: #000000;
-      z-index: 2;
-    }
-
-    .minute {
-      width: 4px;
-      height: 105px;
-      background-color: #000000;
-      z-index: 3;
-    }
-
-    .second {
-      width: 2px;
-      height: 120px;
-      background-color: #000000;
-      z-index: 4;
-    }
-
-    .center-cap {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 12px;
-      height: 12px;
-      background-color: #111115;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 5;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Evolution: Bipedal Runner & Jumper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Matter.js Physics Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a; /* Tailwind slate-900 */
+            color: white;
+            font-family: 'Inter', sans-serif;
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to UI elements */
+            overflow: hidden; /* Keep dragged panels inside */
+        }
+        .panel {
+            position: absolute;
+            background: rgba(15, 23, 42, 0.4); /* Glassmorphic darker slate */
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 1rem;
+            pointer-events: auto; /* Enable clicks on the panels */
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            transition: height 0.3s ease, opacity 0.3s ease;
+        }
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            cursor: grab;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            user-select: none;
+        }
+        .panel-header:active {
+            cursor: grabbing;
+        }
+        .panel-content {
+            padding: 1rem;
+            overflow-y: auto;
+            max-height: calc(80vh - 50px);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+        }
+        .panel.minimized .panel-content {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+        .window-controls button {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 50%;
+            transition: color 0.2s, background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+        }
+        .window-controls button:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        #restore-ui-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            pointer-events: auto;
+            display: none;
+            z-index: 20;
+        }
+        #recenter-camera-btn {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: auto;
+            display: none;
+            z-index: 20;
+        }
+        
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2); 
+            border-radius: 10px;
+        }
+    </style>
 </head>
 <body>
 
-  <div class="clock">
-    <div class="hand hour" id="hour-hand"></div>
-    <div class="hand minute" id="minute-hand"></div>
-    <div class="hand second" id="second-hand"></div>
-    <div class="center-cap"></div>
-  </div>
+    <!-- Physics Canvas -->
+    <div id="canvas-container"></div>
 
-  <script>
-    // Audio framework setup
-    let audioCtx = null;
-    let audioUnlocked = false;
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        
+        <!-- Stats Panel (Left) -->
+        <div class="panel w-64" id="panel-stats" style="top: 20px; left: 20px;">
+            <div class="panel-header drag-handle">
+                <span class="font-bold text-sm text-white tracking-wider uppercase">Evolution Stats</span>
+                <div class="window-controls flex gap-1">
+                    <button class="minimize-btn" title="Minimize">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                    <button class="close-btn" title="Close">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-content">
+                <div class="flex flex-col gap-1 text-sm text-slate-300">
+                    <div class="flex justify-between">
+                        <span>Generation:</span>
+                        <span id="stat-gen" class="font-bold text-white">1</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Alive:</span>
+                        <span id="stat-alive" class="font-bold text-white">0 / 0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Time Left:</span>
+                        <span id="stat-time" class="font-bold text-white">0s</span>
+                    </div>
+                    <div class="flex justify-between mt-2 pt-2 border-t border-slate-600">
+                        <span>Best Fitness:</span>
+                        <span id="stat-best-fit" class="font-bold text-teal-400">0.0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Best Distance:</span>
+                        <span id="stat-best-dist" class="font-bold text-teal-400">0m</span>
+                    </div>
+                </div>
 
-    /**
-     * Plays a sound file with controlled volume.
-     * @param {string} fileName - Path or URL to the mp3 file
-     * @param {number} volume - Volume level from 0.0 to 1.0
-     */
-    function playSound(fileName, volume = 0.05) {
-      const safeVolume = Math.max(0, Math.min(1, volume));
-      
-      const audio = new Audio(fileName);
-      audio.volume = safeVolume;
+                <div class="text-xs text-slate-400 mt-2 leading-relaxed">
+                    <strong>Goal:</strong> The AI learns to control its 8 joints using Neuroevolution. It is rewarded for moving forward and keeping its torso upright. It dies if its torso hits the ground.
+                </div>
+            </div>
+        </div>
 
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          // Fallback tone if MP3 file is not found or fails
-          playFallbackTick(safeVolume);
+        <!-- Controls Panel (Right) -->
+        <div class="panel w-72" id="panel-controls" style="top: 20px; right: 20px;">
+            <div class="panel-header drag-handle">
+                <span class="font-bold text-sm text-white tracking-wider uppercase">Simulation Controls</span>
+                <div class="window-controls flex gap-1">
+                    <button class="minimize-btn" title="Minimize">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                    <button class="close-btn" title="Close">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-content">
+                <!-- Speed Control -->
+                <div class="flex flex-col gap-2">
+                    <label for="speed-slider" class="text-sm font-medium flex justify-between text-slate-200">
+                        Simulation Speed <span id="speed-val" class="text-blue-400">1x</span>
+                    </label>
+                    <input type="range" id="speed-slider" min="1" max="10" value="2" class="w-full cursor-pointer accent-blue-500">
+                </div>
+
+                <!-- Training Mode -->
+                <div class="flex flex-col gap-2">
+                    <label for="mode-select" class="text-sm font-medium text-slate-200">Training Mode</label>
+                    <select id="mode-select" class="w-full bg-slate-800/80 text-white rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer border border-slate-600 backdrop-blur-md">
+                        <option value="walk">Walk / Run</option>
+                        <option value="jump">Jump Over Boxes</option>
+                    </select>
+                </div>
+
+                <!-- Map Selector -->
+                <div class="flex flex-col gap-2">
+                    <label for="map-select" class="text-sm font-medium text-slate-200">Environment Map</label>
+                    <select id="map-select" class="w-full bg-slate-800/80 text-white rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer border border-slate-600 backdrop-blur-md">
+                        <option value="flat">Flat Concrete</option>
+                        <option value="boxes">Flat with Boxes</option>
+                        <option value="hills">Hills / Uneven</option>
+                    </select>
+                </div>
+
+                <div class="flex flex-col gap-2 mt-2">
+                    <button id="btn-reset" class="bg-blue-600/80 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-bold transition shadow-lg backdrop-blur-md border border-blue-500/50">
+                        Restart Evolution
+                    </button>
+                    <button id="btn-kill" class="bg-red-500/80 hover:bg-red-400 text-white py-2 rounded-lg text-sm font-bold transition shadow-lg backdrop-blur-md border border-red-500/50">
+                        Kill All (Next Gen)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <button id="restore-ui-btn" class="bg-slate-700/80 hover:bg-slate-600 text-white py-2 px-4 rounded-full text-sm font-bold transition shadow-lg backdrop-blur-md border border-slate-500 flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6H4zm10 0h6v6h-6zM4 4h6v6H4zm10 0h6v6h-6z"/></svg>
+            Restore UI Panels
+        </button>
+
+        <button id="recenter-camera-btn" class="bg-indigo-600/80 hover:bg-indigo-500 text-white py-2 px-6 rounded-full text-sm font-bold transition shadow-lg backdrop-blur-md border border-indigo-400 flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            Recenter Camera
+        </button>
+
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        // --- 1. NEURAL NETWORK IMPLEMENTATION ---
+        // A simple Feed-Forward Neural Network for Neuroevolution
+        class NeuralNetwork {
+            constructor(inputNodes, hiddenNodes, outputNodes) {
+                this.inputNodes = inputNodes;
+                this.hiddenNodes = hiddenNodes;
+                this.outputNodes = outputNodes;
+
+                // Weights and biases arrays
+                this.weightsIH = this.randomMatrix(this.hiddenNodes, this.inputNodes);
+                this.weightsHO = this.randomMatrix(this.outputNodes, this.hiddenNodes);
+                this.biasH = this.randomMatrix(this.hiddenNodes, 1);
+                this.biasO = this.randomMatrix(this.outputNodes, 1);
+            }
+
+            randomMatrix(rows, cols) {
+                let matrix = [];
+                for (let i = 0; i < rows; i++) {
+                    matrix[i] = [];
+                    for (let j = 0; j < cols; j++) {
+                        matrix[i][j] = (Math.random() * 2) - 1; // -1 to 1
+                    }
+                }
+                return matrix;
+            }
+
+            // Activation function (Tanh for ranges between -1 and 1)
+            tanh(x) {
+                return Math.tanh(x);
+            }
+
+            predict(inputArray) {
+                // Input to Hidden
+                let hidden = this.dotProduct(this.weightsIH, inputArray);
+                hidden = this.addBias(hidden, this.biasH);
+                hidden = this.mapMatrix(hidden, this.tanh);
+
+                // Hidden to Output
+                let output = this.dotProduct(this.weightsHO, hidden);
+                output = this.addBias(output, this.biasO);
+                output = this.mapMatrix(output, this.tanh);
+
+                // Return 1D array
+                return output.map(row => row[0]);
+            }
+
+            // Matrix Operations
+            dotProduct(matrixA, arrayB) {
+                // arrayB is treated as a column vector
+                let result = [];
+                for (let i = 0; i < matrixA.length; i++) {
+                    let sum = 0;
+                    for (let j = 0; j < matrixA[0].length; j++) {
+                        sum += matrixA[i][j] * arrayB[j];
+                    }
+                    result[i] = [sum];
+                }
+                return result;
+            }
+
+            addBias(matrix, bias) {
+                let result = [];
+                for (let i = 0; i < matrix.length; i++) {
+                    result[i] = [matrix[i][0] + bias[i][0]];
+                }
+                return result;
+            }
+
+            mapMatrix(matrix, func) {
+                let result = [];
+                for (let i = 0; i < matrix.length; i++) {
+                    result[i] = [func(matrix[i][0])];
+                }
+                return result;
+            }
+
+            // Genetic Algorithm Methods
+            copy() {
+                let clone = new NeuralNetwork(this.inputNodes, this.hiddenNodes, this.outputNodes);
+                clone.weightsIH = JSON.parse(JSON.stringify(this.weightsIH));
+                clone.weightsHO = JSON.parse(JSON.stringify(this.weightsHO));
+                clone.biasH = JSON.parse(JSON.stringify(this.biasH));
+                clone.biasO = JSON.parse(JSON.stringify(this.biasO));
+                return clone;
+            }
+
+            mutate(rate) {
+                const mutateFunc = (val) => {
+                    if (Math.random() < rate) {
+                        return val + ((Math.random() * 2) - 1) * 0.5; // Add Gaussian-ish noise
+                    }
+                    return val;
+                };
+                
+                this.weightsIH = this.mutateMatrix(this.weightsIH, mutateFunc);
+                this.weightsHO = this.mutateMatrix(this.weightsHO, mutateFunc);
+                this.biasH = this.mutateMatrix(this.biasH, mutateFunc);
+                this.biasO = this.mutateMatrix(this.biasO, mutateFunc);
+            }
+
+            mutateMatrix(matrix, func) {
+                for (let i = 0; i < matrix.length; i++) {
+                    for (let j = 0; j < matrix[0].length; j++) {
+                        matrix[i][j] = func(matrix[i][j]);
+                    }
+                }
+                return matrix;
+            }
+
+            crossover(partner) {
+                let child = new NeuralNetwork(this.inputNodes, this.hiddenNodes, this.outputNodes);
+                
+                const crossMatrix = (mA, mB) => {
+                    let mC = [];
+                    for (let i = 0; i < mA.length; i++) {
+                        mC[i] = [];
+                        for (let j = 0; j < mA[0].length; j++) {
+                            // 50% chance to inherit from either parent
+                            mC[i][j] = Math.random() < 0.5 ? mA[i][j] : mB[i][j];
+                        }
+                    }
+                    return mC;
+                };
+
+                child.weightsIH = crossMatrix(this.weightsIH, partner.weightsIH);
+                child.weightsHO = crossMatrix(this.weightsHO, partner.weightsHO);
+                child.biasH = crossMatrix(this.biasH, partner.biasH);
+                child.biasO = crossMatrix(this.biasO, partner.biasO);
+
+                return child;
+            }
+        }
+
+
+        // --- 2. CREATURE & PHYSICS IMPLEMENTATION ---
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Body = Matter.Body,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Constraint = Matter.Constraint,
+              Vector = Matter.Vector;
+
+        const CATEGORY_ENVIRONMENT = 0x0001;
+        const CATEGORY_BOT = 0x0002;
+
+        class Creature {
+            constructor(world, x, y, brain = null) {
+                this.world = world;
+                this.isDead = false;
+                this.fitness = 0;
+                this.startX = x;
+                this.timeAlive = 0;
+
+                // Neural Net Setup
+                // Inputs: 
+                // 1. Torso Angle, 2. Torso AngVel, 3. Torso Y pos
+                // 4-11: 8 Joint Angles, 12-19: 8 Joint AngVels
+                // 20-22: Raycasts (Forward, Down-Forward, Down)
+                this.inputs = 22;
+                this.hidden = 16;
+                this.outputs = 8; // Target angles for 8 joints
+                
+                if (brain) {
+                    this.brain = brain.copy();
+                } else {
+                    this.brain = new NeuralNetwork(this.inputs, this.hidden, this.outputs);
+                }
+
+                // Physics Body Setup
+                this.group = Body.nextGroup(true); // Same group = don't collide with self
+                this.parts = [];
+                this.joints = [];
+                
+                this.buildBody(x, y);
+            }
+
+            buildBody(x, y) {
+                const group = this.group;
+                const density = 0.01;
+                const friction = 0.8;
+                
+                // Styling
+                const renderOpts = { fillStyle: 'hsl(' + Math.floor(Math.random() * 360) + ', 70%, 60%)' };
+                const torsoRender = { fillStyle: '#ffffff' };
+
+                const botCollisionFilter = { 
+                    group: group, // Still use group to prevent self-collision
+                    category: CATEGORY_BOT,
+                    mask: CATEGORY_ENVIRONMENT 
+                };
+
+                // 1. Torso
+                this.torso = Bodies.rectangle(x, y - 50, 20, 50, { 
+                    collisionFilter: botCollisionFilter, 
+                    density: density * 1.5,
+                    render: torsoRender 
+                });
+                this.parts.push(this.torso);
+
+                // Helper to create limbs
+                const createLimb = (offsetX, offsetY, width, upperLen, lowerLen, label) => {
+                    let upper = Bodies.rectangle(x + offsetX, y - 50 + offsetY, width, upperLen, { 
+                        collisionFilter: botCollisionFilter, density, render: renderOpts, label: label+'Upper' 
+                    });
+                    let lower = Bodies.rectangle(x + offsetX, y - 50 + offsetY + upperLen, width, lowerLen, { 
+                        collisionFilter: botCollisionFilter, density, render: renderOpts, friction, label: label+'Lower' 
+                    });
+                    this.parts.push(upper, lower);
+                    return { upper, lower };
+                };
+
+                // Create 4 Limbs: 2 Legs, 2 Arms
+                this.legL = createLimb(0, 25, 12, 30, 30, 'LegL');
+                this.legR = createLimb(0, 25, 12, 30, 30, 'LegR');
+                this.armL = createLimb(0, -15, 8, 25, 25, 'ArmL');
+                this.armR = createLimb(0, -15, 8, 25, 25, 'ArmR');
+
+                // Connect Joints (Constraints)
+                const connect = (bodyA, bodyB, offsetA, offsetB) => {
+                    let constraint = Constraint.create({
+                        bodyA: bodyA,
+                        pointA: offsetA,
+                        bodyB: bodyB,
+                        pointB: offsetB,
+                        stiffness: 1, // Rigid connection point
+                        length: 0,
+                        render: { visible: false }
+                    });
+                    Composite.add(this.world, constraint);
+                    // Store for our custom motor PD controller
+                    this.joints.push({ parent: bodyA, child: bodyB });
+                };
+
+                // Hips (Torso to Upper Legs)
+                connect(this.torso, this.legL.upper, {x:0, y:20}, {x:0, y:-12});
+                connect(this.torso, this.legR.upper, {x:0, y:20}, {x:0, y:-12});
+                // Knees (Upper to Lower Legs)
+                connect(this.legL.upper, this.legL.lower, {x:0, y:12}, {x:0, y:-12});
+                connect(this.legR.upper, this.legR.lower, {x:0, y:12}, {x:0, y:-12});
+                
+                // Shoulders (Torso to Upper Arms)
+                connect(this.torso, this.armL.upper, {x:0, y:-20}, {x:0, y:-10});
+                connect(this.torso, this.armR.upper, {x:0, y:-20}, {x:0, y:-10});
+                // Elbows (Upper to Lower Arms)
+                connect(this.armL.upper, this.armL.lower, {x:0, y:10}, {x:0, y:-10});
+                connect(this.armR.upper, this.armR.lower, {x:0, y:10}, {x:0, y:-10});
+
+                // Add all bodies to world
+                Composite.add(this.world, this.parts);
+            }
+
+            // Raycasting for sensors
+            getRayDistances(obstacles) {
+                // Simplified mock raycast based on nearest obstacle bounds since real raycasting 
+                // in Matter.js across many agents can be slow.
+                // We'll calculate distance to the nearest box in front of the creature.
+                let minDx = 1000;
+                let minDy = 1000;
+                
+                if (obstacles && obstacles.length > 0) {
+                    for(let obs of obstacles) {
+                        if(obs.position.x > this.torso.position.x && obs.position.x - this.torso.position.x < 500) {
+                            let dx = obs.position.x - this.torso.position.x;
+                            let dy = obs.position.y - this.torso.position.y;
+                            if(dx < minDx) {
+                                minDx = dx;
+                                minDy = dy;
+                            }
+                        }
+                    }
+                }
+                
+                // Normalize 
+                return [
+                    Math.min(1, minDx / 500), 
+                    Math.min(1, minDy / 500),
+                    this.torso.position.y / 1000 // Height above global 0 (rough metric)
+                ];
+            }
+
+            update(obstacles, mode) {
+                if (this.isDead) return;
+
+                this.timeAlive++;
+
+                // 1. Gather Inputs
+                let inputs = [];
+                inputs.push(this.torso.angle / Math.PI); // Normalize -1 to 1
+                inputs.push(this.torso.angularVelocity);
+                inputs.push(this.torso.position.y / 1000);
+
+                // Joint angles and velocities
+                for (let i = 0; i < 8; i++) {
+                    let joint = this.joints[i];
+                    let relAngle = (joint.child.angle - joint.parent.angle);
+                    // Normalize relative angle
+                    while(relAngle > Math.PI) relAngle -= Math.PI*2;
+                    while(relAngle < -Math.PI) relAngle += Math.PI*2;
+                    
+                    inputs.push(relAngle / Math.PI);
+                    inputs.push(joint.child.angularVelocity - joint.parent.angularVelocity);
+                }
+
+                // Raycasts
+                let rays = this.getRayDistances(obstacles);
+                inputs.push(...rays);
+
+                // 2. Think
+                let outputs = this.brain.predict(inputs);
+
+                // 3. Act (Apply Motor Torques using PD Controller)
+                const maxTorque = 0.015; // Max torque muscle strength
+                const pGain = 0.008; // Proportional gain
+                const dGain = 0.001; // Derivative gain
+
+                for (let i = 0; i < 8; i++) {
+                    let joint = this.joints[i];
+                    
+                    // Map output (-1 to 1) to target angle (-PI/2 to PI/2 approx)
+                    let targetAngle = outputs[i] * (Math.PI / 1.5); 
+                    
+                    let currentRelAngle = joint.child.angle - joint.parent.angle;
+                    while(currentRelAngle > Math.PI) currentRelAngle -= Math.PI*2;
+                    while(currentRelAngle < -Math.PI) currentRelAngle += Math.PI*2;
+
+                    let error = targetAngle - currentRelAngle;
+                    let velError = joint.child.angularVelocity - joint.parent.angularVelocity;
+
+                    // PD calculation
+                    let torque = (error * pGain) - (velError * dGain);
+                    
+                    // Clamp torque
+                    torque = Math.max(-maxTorque, Math.min(maxTorque, torque));
+
+                    // Apply equal and opposite torque to parent and child
+                    joint.child.torque += torque;
+                    joint.parent.torque -= torque;
+                }
+
+                // 4. Check Death Conditions
+                // Died if torso touches ground (approx y threshold depending on terrain)
+                // Or if it falls too far behind (x < startX - 200)
+                let dist = this.torso.position.x - this.startX;
+                
+                // Basic ground death check (assuming ground is around y=600 for flat)
+                // Will refine dynamically based on map
+                if (this.torso.position.y > 570) {
+                    this.die();
+                } else if (dist < -300) {
+                    this.die(); // Too far backwards
+                }
+            }
+
+            calculateFitness() {
+                if (this.fitness !== 0) return this.fitness; // Already calculated
+                
+                let dist = this.torso.position.x - this.startX;
+                // Reward forward distance heavily
+                let fit = Math.max(0, dist); 
+                
+                // Bonus for staying alive
+                fit += this.timeAlive * 0.1;
+                
+                // Penalty for being tilted over
+                let tiltPenalty = Math.abs(this.torso.angle);
+                fit -= tiltPenalty * 10;
+
+                this.fitness = Math.max(0.1, fit); // Minimum fitness to avoid zero
+                return this.fitness;
+            }
+
+            die() {
+                this.isDead = true;
+                this.calculateFitness();
+                // Change color to grey
+                for (let part of this.parts) {
+                    part.render.fillStyle = '#475569'; // slate-600
+                    part.render.opacity = 0.5;
+                }
+            }
+
+            destroy() {
+                Composite.remove(this.world, this.parts);
+            }
+        }
+
+
+        // --- 3. MAIN SIMULATION & EVOLUTION LOOP ---
+        const canvasContainer = document.getElementById('canvas-container');
+        
+        // Matter.js Setup
+        const engine = Engine.create();
+        const world = engine.world;
+        engine.gravity.y = 1; // Earth-like gravity
+
+        const render = Render.create({
+            element: canvasContainer,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                wireframes: false,
+                background: 'transparent',
+                hasBounds: true // Enable camera panning
+            }
         });
-      }
-    }
 
-    // Web Audio API synthesizer for soft ticking sound fallback
-    function playFallbackTick(vol) {
-      if (!audioUnlocked) return;
-      try {
-        if (!audioCtx) {
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        Render.run(render);
+
+        // UI Elements
+        const statGen = document.getElementById('stat-gen');
+        const statAlive = document.getElementById('stat-alive');
+        const statTime = document.getElementById('stat-time');
+        const statBestFit = document.getElementById('stat-best-fit');
+        const statBestDist = document.getElementById('stat-best-dist');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedVal = document.getElementById('speed-val');
+        const modeSelect = document.getElementById('mode-select');
+        const mapSelect = document.getElementById('map-select');
+        const btnReset = document.getElementById('btn-reset');
+        const btnKill = document.getElementById('btn-kill');
+
+        // Simulation Configuration
+        const POPULATION_SIZE = 30;
+        const GENERATION_TIME = 600; // frames per generation
+        
+        let population = [];
+        let generation = 1;
+        let frameCount = 0;
+        let simSpeed = parseInt(speedSlider.value);
+        let bestGlobalFitness = 0;
+        
+        let obstacles = [];
+        let groundBodies = [];
+
+        // UI Panel Interaction Logic
+        let closedPanels = 0;
+        document.querySelectorAll('.panel').forEach(panel => {
+            const header = panel.querySelector('.panel-header');
+            const minBtn = panel.querySelector('.minimize-btn');
+            const closeBtn = panel.querySelector('.close-btn');
+            
+            // Dragging
+            let isDragging = false, startX, startY, initialX, initialY;
+            
+            header.addEventListener('mousedown', (e) => {
+                if(e.target.closest('.window-controls')) return;
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                initialX = panel.offsetLeft;
+                initialY = panel.offsetTop;
+                panel.style.zIndex = 100; // Bring to front
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if(!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                panel.style.left = `${initialX + dx}px`;
+                panel.style.top = `${initialY + dy}px`;
+                // Keep right property from interfering if dragged
+                panel.style.right = 'auto'; 
+            });
+            
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                panel.style.zIndex = '';
+            });
+
+            // Minimize
+            minBtn.addEventListener('click', () => {
+                panel.classList.toggle('minimized');
+            });
+
+            // Close
+            closeBtn.addEventListener('click', () => {
+                panel.style.display = 'none';
+                closedPanels++;
+                document.getElementById('restore-ui-btn').style.display = 'flex';
+            });
+        });
+
+        document.getElementById('restore-ui-btn').addEventListener('click', () => {
+            document.querySelectorAll('.panel').forEach(p => p.style.display = 'flex');
+            closedPanels = 0;
+            document.getElementById('restore-ui-btn').style.display = 'none';
+        });
+
+
+        // Camera Panning Logic
+        let isCameraAuto = true;
+        let isCanvasDragging = false;
+        let lastMouseX = 0, lastMouseY = 0;
+        const recenterBtn = document.getElementById('recenter-camera-btn');
+
+        canvasContainer.addEventListener('mousedown', (e) => {
+            if(e.target.closest('.panel') || e.target.closest('button')) return;
+            isCanvasDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            document.body.style.cursor = 'grabbing';
+            
+            if (isCameraAuto) {
+                isCameraAuto = false;
+                recenterBtn.style.display = 'flex';
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isCanvasDragging) return;
+            
+            const dx = e.clientX - lastMouseX;
+            const dy = e.clientY - lastMouseY;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+
+            // Pan the camera by moving the bounds in the opposite direction
+            const bounds = render.bounds;
+            bounds.min.x -= dx;
+            bounds.max.x -= dx;
+            bounds.min.y -= dy;
+            bounds.max.y -= dy;
+        });
+
+        window.addEventListener('mouseup', () => {
+            isCanvasDragging = false;
+            document.body.style.cursor = 'default';
+        });
+        
+        recenterBtn.addEventListener('click', () => {
+            isCameraAuto = true;
+            recenterBtn.style.display = 'none';
+        });
+
+
+        function initMap() {
+            // Clear old map
+            Composite.remove(world, obstacles);
+            Composite.remove(world, groundBodies);
+            obstacles = [];
+            groundBodies = [];
+
+            let mapType = mapSelect.value;
+
+            const groundOptions = { 
+                isStatic: true, 
+                render: { fillStyle: '#334155' }, 
+                friction: 1.0,
+                collisionFilter: { category: CATEGORY_ENVIRONMENT }
+            };
+
+            if (mapType === 'flat' || mapType === 'boxes') {
+                // Infinite-feeling flat ground (very wide)
+                let ground = Bodies.rectangle(5000, 600, 20000, 100, groundOptions);
+                groundBodies.push(ground);
+
+                if (mapType === 'boxes') {
+                    // Spawn boxes every ~400px
+                    for (let i = 400; i < 10000; i += 400 + Math.random()*200) {
+                        let size = 30 + Math.random() * 30;
+                        let box = Bodies.rectangle(i, 550 - size/2, size, size, { 
+                            isStatic: true, 
+                            render: { fillStyle: '#f59e0b' }, // Amber
+                            collisionFilter: { category: CATEGORY_ENVIRONMENT }
+                        });
+                        obstacles.push(box);
+                    }
+                }
+            } else if (mapType === 'hills') {
+                // Generate uneven terrain using varying width/angle rectangles
+                let startX = -1000;
+                let currentY = 600;
+                for (let i = 0; i < 50; i++) {
+                    let width = 300 + Math.random() * 400;
+                    let angle = (Math.random() - 0.5) * 0.4; // max tilt
+                    let hill = Bodies.rectangle(startX + width/2, currentY, width, 100, {
+                        ...groundOptions,
+                        angle: angle
+                    });
+                    groundBodies.push(hill);
+                    startX += width * Math.cos(angle);
+                    currentY += width * Math.sin(angle);
+                }
+            }
+
+            Composite.add(world, groundBodies);
+            Composite.add(world, obstacles);
         }
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume();
+
+        function spawnPopulation(brains = []) {
+            population.forEach(p => p.destroy());
+            population = [];
+            
+            for (let i = 0; i < POPULATION_SIZE; i++) {
+                let startX = (Math.random() - 0.5) * 50; // Slight stagger
+                let brain = brains.length > 0 ? brains[i] : null;
+                population.push(new Creature(world, startX, 400, brain));
+            }
+            frameCount = 0;
+            statGen.innerText = generation;
         }
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.03);
-        
-        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
-        
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.03);
-      } catch (e) {
-        // Ignore audio playback errors
-      }
-    }
 
-    // Unlock browser audio context on first click
-    window.addEventListener('click', () => {
-      audioUnlocked = true;
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-    }, { once: true });
+        function evolve() {
+            // 1. Calculate fitness for all
+            population.forEach(p => p.calculateFitness());
+            
+            // 2. Sort by fitness descending
+            population.sort((a, b) => b.fitness - a.fitness);
 
-    let lastSecond = -1;
+            let bestFit = population[0].fitness;
+            let bestDist = population[0].torso.position.x - population[0].startX;
+            
+            if (bestFit > bestGlobalFitness) bestGlobalFitness = bestFit;
+            
+            statBestFit.innerText = bestGlobalFitness.toFixed(1);
+            statBestDist.innerText = (bestDist / 50).toFixed(1) + 'm'; // Scale down distance for display
 
-    function updateClock() {
-      const now = new Date();
+            // 3. Selection & Reproduction
+            let nextBrains = [];
+            
+            // Elitism: Keep best 2 exactly as they are
+            nextBrains.push(population[0].brain.copy());
+            nextBrains.push(population[1].brain.copy());
 
-      const seconds = now.getSeconds();
-      const minutes = now.getMinutes();
-      const hours = now.getHours();
+            // Helper to pick a parent (Roulette Wheel based on fitness)
+            const selectParent = () => {
+                let totalFitness = population.reduce((sum, p) => sum + p.fitness, 0);
+                let r = Math.random() * totalFitness;
+                let runningSum = 0;
+                for (let p of population) {
+                    runningSum += p.fitness;
+                    if (runningSum >= r) return p.brain;
+                }
+                return population[0].brain;
+            };
 
-      // Trigger sound once per second when second changes
-      if (seconds !== lastSecond) {
-        lastSecond = seconds;
-        playSound('tick.mp3', 0.05);
-      }
+            // Generate rest of population
+            for (let i = 2; i < POPULATION_SIZE; i++) {
+                let parentA = selectParent();
+                let parentB = selectParent();
+                
+                let childBrain = parentA.crossover(parentB);
+                childBrain.mutate(0.1); // 10% mutation rate
+                nextBrains.push(childBrain);
+            }
 
-      const secondDegrees = (seconds / 60) * 360;
-      const minuteDegrees = ((minutes + seconds / 60) / 60) * 360;
-      const hourDegrees = (((hours % 12) + minutes / 60) / 12) * 360;
+            generation++;
+            spawnPopulation(nextBrains);
+        }
 
-      document.getElementById('second-hand').style.transform = `translateX(-50%) rotate(${secondDegrees}deg)`;
-      document.getElementById('minute-hand').style.transform = `translateX(-50%) rotate(${minuteDegrees}deg)`;
-      document.getElementById('hour-hand').style.transform = `translateX(-50%) rotate(${hourDegrees}deg)`;
-    }
+        // Camera Follow Logic
+        function updateCamera() {
+            // Find the furthest living creature
+            let bestX = -Infinity;
+            let bestY = 0;
+            let aliveCount = 0;
+            
+            for (let p of population) {
+                if (!p.isDead) {
+                    aliveCount++;
+                    if (p.torso.position.x > bestX) {
+                        bestX = p.torso.position.x;
+                        bestY = p.torso.position.y;
+                    }
+                }
+            }
 
-    // Check time every 100ms
-    setInterval(updateClock, 100);
-    updateClock();
-  </script>
+            statAlive.innerText = `${aliveCount} / ${POPULATION_SIZE}`;
+            statTime.innerText = Math.ceil((GENERATION_TIME - frameCount) / 60) + 's';
+
+            if (aliveCount === 0 || frameCount >= GENERATION_TIME) {
+                evolve();
+                return;
+            }
+
+            if (!isCameraAuto) return; // Skip updating bounds if free panning
+
+            // Smoothly move camera to best creature
+            let width = render.options.width;
+            let height = render.options.height;
+            
+            // Bounds calculation to center on bestX
+            if (bestX !== -Infinity) {
+                let targetMinX = bestX - width * 0.3; // 30% from left edge
+                let targetMaxX = targetMinX + width;
+                let targetMinY = bestY - height * 0.6;
+                let targetMaxY = targetMinY + height;
+
+                // Simple LERP for smooth camera
+                let lerp = 0.1;
+                let currentBounds = render.bounds;
+                
+                currentBounds.min.x += (targetMinX - currentBounds.min.x) * lerp;
+                currentBounds.max.x += (targetMaxX - currentBounds.max.x) * lerp;
+                currentBounds.min.y += (targetMinY - currentBounds.min.y) * lerp;
+                currentBounds.max.y += (targetMaxY - currentBounds.max.y) * lerp;
+            }
+        }
+
+        // Main Loop
+        function gameLoop() {
+            // Allow multiple simulation steps per visual frame based on speed
+            for (let s = 0; s < simSpeed; s++) {
+                // Update Physics manually instead of using Runner to control speed strictly
+                Engine.update(engine, 1000 / 60); 
+
+                // Update Creatures
+                let mode = modeSelect.value;
+                for (let p of population) {
+                    p.update(obstacles, mode);
+                }
+
+                frameCount++;
+                if(frameCount >= GENERATION_TIME) break; // Don't over-simulate if time is up
+            }
+
+            updateCamera();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Events
+        window.addEventListener('resize', () => {
+            render.canvas.width = window.innerWidth;
+            render.canvas.height = window.innerHeight;
+            render.options.width = window.innerWidth;
+            render.options.height = window.innerHeight;
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            simSpeed = parseInt(e.target.value);
+            speedVal.innerText = simSpeed + 'x';
+        });
+
+        mapSelect.addEventListener('change', () => {
+            initMap();
+            generation = 1;
+            bestGlobalFitness = 0;
+            spawnPopulation();
+        });
+
+        btnReset.addEventListener('click', () => {
+            generation = 1;
+            bestGlobalFitness = 0;
+            spawnPopulation();
+        });
+
+        btnKill.addEventListener('click', () => {
+            population.forEach(p => p.die());
+            frameCount = GENERATION_TIME; // force evolution next frame
+        });
+
+
+        // Initialize
+        initMap();
+        spawnPopulation();
+        gameLoop();
+
+    </script>
 </body>
 </html>
